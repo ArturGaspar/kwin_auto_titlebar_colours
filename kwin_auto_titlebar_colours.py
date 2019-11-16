@@ -57,8 +57,11 @@ def remove_kwin_rules():
     new_rules = []
     count = rules["General"].getint("count", fallback=0)
     for section in map(str, range(1, count + 1)):
+        try:
+            rule = dict(rules.items(section))
+        except configparser.NoSectionError:
+            continue
         rule_name = rules.get(section, "Description", fallback="")
-        rule = dict(rules.items(section))
         del rules[section]
         if not rule_name.startswith(CONFIG_PREFIX):
             new_rules.append(rule)
@@ -66,7 +69,7 @@ def remove_kwin_rules():
     for section, rule in enumerate(new_rules, start=1):
         rules[str(section)] = rule
 
-    rules["General"]["count"] = str(len(rules))
+    rules["General"]["count"] = str(len(new_rules))
 
     with open(kwin_rules_path, 'w') as f:
         rules.write(f)
