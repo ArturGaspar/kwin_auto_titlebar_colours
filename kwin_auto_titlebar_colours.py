@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import colorsys
 import concurrent.futures
 import configparser
@@ -26,6 +27,9 @@ get_kwin_rule_name = get_colour_scheme_name = partial("{}{}".format,
                                                       CONFIG_PREFIX)
 
 
+kwin_rules_path = os.path.join(xdg_config_home, "kwinrulesrc")
+
+
 class ConfigParser(configparser.ConfigParser):
     optionxform = str
 
@@ -38,14 +42,34 @@ class ConfigParser(configparser.ConfigParser):
         return super().write(*args, **kwargs)
 
 
-def find_desktop_files():
-    filenames = set()
-    for root, dirs, files in chain(*map(os.walk,
-                                        load_data_paths("applications"))):
-        for desktop_file in fnmatch.filter(files, "*.desktop"):
-            if desktop_file not in filenames:
-                filenames.add(desktop_file)
-                yield os.path.join(root, desktop_file)
+def remove_colour_schemes():
+    schemes_dir = os.path.join(xdg_data_home, "color-schemes")
+    pattern = get_colour_scheme_name("*")
+    for filename in fnmatch.filter(os.listdir(schemes_dir),
+                                   "{}.colors".format(pattern)):
+        os.unlink(os.path.join(schemes_dir, filename))
+
+
+def remove_kwin_rules():
+    rules = ConfigParser()
+    rules.read(kwin_rules_path)
+
+    new_rules = []
+    count = rules["General"].getint("count", fallback=0)
+    for section in map(str, range(1, count + 1)):
+        rule_name = rules.get(section, "Description", fallback="")
+        rule = dict(rules.items(section))
+        del rules[section]
+        if not rule_name.startswith(CONFIG_PREFIX):
+            new_rules.append(rule)
+
+    for section, rule in enumerate(new_rules, start=1):
+        rules[str(section)] = rule
+
+    rules["General"]["count"] = str(len(rules))
+
+    with open(kwin_rules_path, 'w') as f:
+        rules.write(f)
 
 
 def load_base_colour_scheme():
@@ -64,6 +88,80 @@ def load_base_colour_scheme():
                             ).format(base_colour_scheme))
 
 
+def find_desktop_files():
+    filenames = set()
+    for root, dirs, files in chain(*map(os.walk,
+                                        load_data_paths("applications"))):
+        for desktop_file in fnmatch.filter(files, "*.desktop"):
+            if desktop_file not in filenames:
+                filenames.add(desktop_file)
+                yield os.path.join(root, desktop_file)
+
+
+def _get_wmclass(application):
+    startupwmclass = application.getStartupWMClass()
+    if startupwmclass:
+        return startupwmclass, 2
+
+    tryexec = application.getTryExec()
+    if tryexec:
+        return os.path.basename(tryexec), 1
+
+    exec_ = application.getExec()
+    if exec_:
+        cmdline = shlex.split(exec_)
+        cmd = os.path.basename(cmdline[0])
+        try:
+            if cmd in {"sh", "xdg-su"} and cmdline[1] == "-c":
+                cmdline = shlex.split(cmdline[2])
+                cmd = os.path.basename(cmdline[0])
+        except IndexError:
+            pass
+        else:
+            return cmd, 0
+
+    return None, None
+
+
+def get_wmclass_icons():
+    wmclass_icons = {}
+    for application in map(DesktopEntry, find_desktop_files()):
+        if "Screensaver" in application.getCategories():
+            continue
+
+        # Priority indicates how good a guess at WM class is. If it comes from
+        # the StartupWMClass field, it is likely more accurate than a guess
+        # from another entry's TryExec or Exec. In case two entries have the
+        # same (guessed) class but different icons, prefer the better guess.
+        wmclass, priority = _get_wmclass(application)
+        if not wmclass:
+            continue
+
+        icon_name = application.getIcon()
+
+        wmclass_icons.setdefault(priority, {})
+        if wmclass_icons[priority].get(wmclass, icon_name) != icon_name:
+            # If different entries pointing to different icons have the same
+            # WM classes, there is no way to set different icons for both and
+            # no good guess as to which one is correct.
+            wmclass_icons[priority][wmclass] = None
+            continue
+
+        wmclass_icons[priority][wmclass] = icon_name
+
+    wmclass_icons_merged = {}
+    for k in set(chain(*(d.keys() for d in wmclass_icons.values()))):
+        for priority in sorted(wmclass_icons.keys(), reverse=True):
+            try:
+                wmclass_icons_merged[k] = wmclass_icons[priority][k]
+            except KeyError:
+                pass
+            else:
+                break
+
+    return wmclass_icons_merged
+
+
 def get_colours_for_icon(icon_path):
     p = subprocess.Popen(["convert",
                           icon_path,
@@ -75,14 +173,6 @@ def get_colours_for_icon(icon_path):
     data = json.loads(stdout)
     return tuple((data[0]["image"]["channelStatistics"][channel]["mean"]
                   for channel in ("Red", "Green", "Blue")))
-
-
-def remove_colour_schemes():
-    schemes_dir = os.path.join(xdg_data_home, "color-schemes")
-    pattern = get_colour_scheme_name("*")
-    for filename in fnmatch.filter(os.listdir(schemes_dir),
-                                   "{}.colors".format(pattern)):
-        os.unlink(os.path.join(schemes_dir, filename))
 
 
 def add_colour_scheme(base_colour_scheme, name, icon_colour):
@@ -98,6 +188,7 @@ def add_colour_scheme(base_colour_scheme, name, icon_colour):
     icon_h, icon_s, icon_v = colorsys.rgb_to_hsv(*icon_colour)
     colours = {k: tuple(map(int, v.split(",")))
                for k, v in base_colour_scheme.items("WM")}
+
     for k in ["activeBackground", "inactiveBackground"]:
         h, s, v = colorsys.rgb_to_hsv(*colours[k])
         h = icon_h
@@ -115,8 +206,6 @@ def add_colour_scheme(base_colour_scheme, name, icon_colour):
 
 
 def update_kwin_rules(updates):
-    kwin_rules_path = os.path.join(xdg_config_home, "kwinrulesrc")
-
     rules = ConfigParser()
     rules.read(kwin_rules_path)
 
@@ -159,70 +248,6 @@ def update_kwin_rules(updates):
 
     with open(kwin_rules_path, 'w') as f:
         rules.write(f)
-
-
-def get_wmclass(application):
-    startupwmclass = application.getStartupWMClass()
-    if startupwmclass:
-        return startupwmclass, 2
-
-    tryexec = application.getTryExec()
-    if tryexec:
-        return os.path.basename(tryexec), 1
-
-    exec_ = application.getExec()
-    if exec_:
-        cmdline = shlex.split(exec_)
-        cmd = os.path.basename(cmdline[0])
-        try:
-            if cmd in {"sh", "xdg-su"} and cmdline[1] == "-c":
-                cmdline = shlex.split(cmdline[2])
-                cmd = os.path.basename(cmdline[0])
-        except IndexError:
-            pass
-        else:
-            return cmd, 0
-
-    return None, None
-
-
-def get_wmclass_icons():
-    wmclass_icons = {}
-    for application in map(DesktopEntry, find_desktop_files()):
-        if "Screensaver" in application.getCategories():
-            continue
-
-        # Priority indicates how good a guess at WM class is. If it comes from
-        # the StartupWMClass field, it is likely more accurate than a guess
-        # from another entry's TryExec or Exec. In case two entries have the
-        # same (guessed) class but different icons, prefer the better guess.
-        wmclass, priority = get_wmclass(application)
-        if not wmclass:
-            continue
-
-        icon_name = application.getIcon()
-
-        wmclass_icons.setdefault(priority, {})
-        if wmclass_icons[priority].get(wmclass, icon_name) != icon_name:
-            # If different entries pointing to different icons have the same
-            # WM classes, there is no way to set different icons for both and
-            # no good guess as to which one is correct.
-            wmclass_icons[priority][wmclass] = None
-            continue
-
-        wmclass_icons[priority][wmclass] = icon_name
-
-    wmclass_icons_merged = {}
-    for k in set(chain(*(d.keys() for d in wmclass_icons.values()))):
-        for priority in sorted(wmclass_icons.keys(), reverse=True):
-            try:
-                wmclass_icons_merged[k] = wmclass_icons[priority][k]
-            except KeyError:
-                pass
-            else:
-                break
-
-    return wmclass_icons_merged
 
 
 def update_application_colours(executor):
@@ -273,10 +298,22 @@ def update_application_colours(executor):
             kwin_rule_updates.append((wmclass, colour_scheme))
     update_kwin_rules(sorted(kwin_rule_updates))
 
-    subprocess.call(["dbus-send", "--type=signal", "--dest=org.kde.KWin",
-                     "/KWin", "org.kde.KWin.reloadConfig"])
+
+def uninstall():
+    remove_colour_schemes()
+    remove_kwin_rules()
 
 
 if __name__ == "__main__":
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        update_application_colours(executor)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--uninstall', action='store_true')
+    args = parser.parse_args()
+
+    if args.uninstall:
+        uninstall()
+    else:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            update_application_colours(executor)
+
+    subprocess.call(["dbus-send", "--type=signal", "--dest=org.kde.KWin",
+                     "/KWin", "org.kde.KWin.reloadConfig"])
