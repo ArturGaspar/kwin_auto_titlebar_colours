@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import colorsys
 import concurrent.futures
 import configparser
 import fnmatch
@@ -10,6 +9,7 @@ import logging
 import os
 import shlex
 import subprocess
+from colorsys import hsv_to_rgb, rgb_to_hsv
 from collections import defaultdict
 from functools import partial
 from itertools import chain
@@ -188,18 +188,30 @@ def add_colour_scheme(base_colour_scheme, name, icon_colour):
         "Name": name
     }
 
-    icon_h, icon_s, icon_v = colorsys.rgb_to_hsv(*icon_colour)
     colours = {k: tuple(map(int, v.split(",")))
                for k, v in base_colour_scheme.items("WM")}
 
-    for k in ["activeBackground", "inactiveBackground"]:
-        h, s, v = colorsys.rgb_to_hsv(*colours[k])
-        h = icon_h
-        s = (icon_s * 4 + s) / 5
-        v = (icon_v * 4 + v) / 5
-        colours[k] = tuple(map(int, colorsys.hsv_to_rgb(h, s, v)))
+    active_hsv = rgb_to_hsv(*colours["activeBackground"])
+    inactive_hsv = rgb_to_hsv(*colours["inactiveBackground"])
+    inactive_s_mult = (1 + (inactive_hsv[1] / active_hsv[1])) / 2
+    inactive_v_mult = (1 + (inactive_hsv[2] / active_hsv[2])) / 2
 
-    colour_scheme["WM"] = {k: ",".join(map(str, v))
+    icon_hsv = rgb_to_hsv(*icon_colour)
+    icon_hsv = (
+        icon_hsv[0],
+        (2 * min(1, 2 * icon_hsv[1]) + active_hsv[1]) / 3,
+        icon_hsv[2]
+    )
+    icon_inactive_hsv = (
+        icon_hsv[0],
+        min(inactive_s_mult * icon_hsv[1], 1),
+        min(inactive_v_mult * icon_hsv[2], 255)
+    )
+
+    colours["activeBackground"] = hsv_to_rgb(*icon_hsv)
+    colours["inactiveBackground"] = hsv_to_rgb(*icon_inactive_hsv)
+
+    colour_scheme["WM"] = {k: ",".join(map(str, map(int, v)))
                            for k, v in colours.items()}
 
     path = os.path.join(xdg_data_home, "color-schemes",
