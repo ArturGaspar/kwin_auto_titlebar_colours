@@ -48,7 +48,7 @@ def find_desktop_files():
                 yield os.path.join(root, desktop_file)
 
 
-def load_base_colours():
+def load_base_colour_scheme():
     kdeglobals = ConfigParser()
     kdeglobals.read(os.path.join(xdg_config_home, "kdeglobals"))
     base_colour_scheme = kdeglobals["General"]["ColorScheme"]
@@ -58,8 +58,7 @@ def load_base_colours():
             if filename == "{}.colors".format(base_colour_scheme):
                 colour_scheme = ConfigParser()
                 colour_scheme.read(os.path.join(color_schemes_dir, filename))
-                return {k: tuple(map(int, v.split(',')))
-                        for k, v in colour_scheme["WM"].items()}
+                return colour_scheme
 
     raise EnvironmentError(("Could not find colour scheme {}"
                             ).format(base_colour_scheme))
@@ -86,14 +85,19 @@ def remove_colour_schemes():
         os.unlink(os.path.join(schemes_dir, filename))
 
 
-def add_colour_scheme(base, name, icon_colour):
+def add_colour_scheme(base_colour_scheme, name, icon_colour):
     colour_scheme = ConfigParser()
+
+    for section in base_colour_scheme.sections():
+        colour_scheme[section] = dict(base_colour_scheme.items(section))
+
     colour_scheme["General"] = {
         "Name": name
     }
 
     icon_h, icon_s, icon_v = colorsys.rgb_to_hsv(*icon_colour)
-    colours = base.copy()
+    colours = {k: tuple(map(int, v.split(",")))
+               for k, v in base_colour_scheme.items("WM")}
     for k in ["activeBackground", "inactiveBackground"]:
         h, s, v = colorsys.rgb_to_hsv(*colours[k])
         h = icon_h
@@ -222,7 +226,7 @@ def get_wmclass_icons():
 
 
 def update_application_colours(executor):
-    base_colours = load_base_colours()
+    base_colour_scheme = load_base_colour_scheme()
 
     colour_scheme_futures = {}
     wmclass_colour_schemes = defaultdict(list)
@@ -259,7 +263,7 @@ def update_application_colours(executor):
             logger.exception("Error processing icon {}".format(icon_name))
             broken_colour_schemes.add(colour_scheme)
         else:
-            add_colour_scheme(base_colours, colour_scheme, icon_colours)
+            add_colour_scheme(base_colour_scheme, colour_scheme, icon_colours)
 
     kwin_rule_updates = []
     for colour_scheme, wmclasses in wmclass_colour_schemes.items():
