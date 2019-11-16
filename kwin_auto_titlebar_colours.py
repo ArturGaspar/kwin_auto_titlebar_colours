@@ -38,7 +38,6 @@ class ConfigParser(configparser.ConfigParser):
         return super(ConfigParser, self).write(*args, **kwargs)
 
 
-
 def find_desktop_files():
     filenames = set()
     for root, dirs, files in chain(*map(os.walk,
