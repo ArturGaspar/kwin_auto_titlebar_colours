@@ -31,11 +31,11 @@ class ConfigParser(configparser.ConfigParser):
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('allow_no_value', True)
-        super(ConfigParser, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def write(self, *args, **kwargs):
         kwargs.setdefault('space_around_delimiters', False)
-        return super(ConfigParser, self).write(*args, **kwargs)
+        return super().write(*args, **kwargs)
 
 
 def find_desktop_files():
