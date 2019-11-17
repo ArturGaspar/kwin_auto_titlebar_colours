@@ -15,7 +15,8 @@ from functools import partial
 from itertools import chain
 from operator import mul
 
-from xdg.BaseDirectory import load_data_paths, xdg_config_home, xdg_data_home
+from xdg.BaseDirectory import (load_data_paths, load_first_config,
+                               xdg_config_home, xdg_data_home)
 from xdg.DesktopEntry import DesktopEntry
 from xdg.IconTheme import getIconPath
 
@@ -362,3 +363,4 @@ if __name__ == "__main__":
 
     subprocess.call(["dbus-send", "--type=signal", "--dest=org.kde.KWin",
                      "/KWin", "org.kde.KWin.reloadConfig"])
+    
