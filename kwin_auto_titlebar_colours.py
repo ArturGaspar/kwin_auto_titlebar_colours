@@ -179,51 +179,55 @@ def get_colours_for_icon(icon_path):
                   for channel in ("Red", "Green", "Blue")))
 
 
-def add_colour_scheme(base_colour_scheme, name, icon_colour):
-    colour_scheme = ConfigParser()
+_to1 = partial(mul, 1 / 255)
+_to255 = partial(mul, 255)
 
-    for section in base_colour_scheme.sections():
-        colour_scheme[section] = dict(base_colour_scheme.items(section))
 
-    colour_scheme["General"] = {
-        "Name": name
-    }
-
-    colours = {k: tuple(map(int, v.split(",")))
-               for k, v in base_colour_scheme.items("WM")}
-
-    to1 = partial(mul, 1 / 255)
-    to255 = partial(mul, 255)
-
-    theme_active_hls = rgb_to_hls(*map(to1, colours["activeBackground"]))
-    theme_inactive_hls = rgb_to_hls(*map(to1, colours["inactiveBackground"]))
-    inactive_l_mult = (1 + (theme_inactive_hls[1] / theme_active_hls[1])) / 2
-    inactive_s_mult = (1 + (theme_inactive_hls[2] / theme_active_hls[2])) / 2
-
-    icon_hls = rgb_to_hls(*map(to1, icon_colour))
-    active_hls = (
-        icon_hls[0],
-        (icon_hls[1] + theme_active_hls[1]) / 2,
-        min(icon_hls[2] * 1.5, 1)
+def add_colour_schemes(base_scheme, new_schemes):
+    base_wm_colours = {k: tuple(map(int, v.split(",")))
+                       for k, v in base_scheme.items("WM")}
+    base_active_hls = rgb_to_hls(
+        *map(_to1, base_wm_colours["activeBackground"])
     )
-    inactive_hls = (
-        icon_hls[0],
-        min(inactive_l_mult * active_hls[1], 1),
-        min(inactive_s_mult * active_hls[2], 1)
+    base_inactive_hls = rgb_to_hls(
+        *map(_to1, base_wm_colours["inactiveBackground"])
     )
+    inactive_l_mult = (1 + (base_inactive_hls[1] / base_active_hls[1])) / 2
+    inactive_s_mult = (1 + (base_inactive_hls[2] / base_active_hls[2])) / 2
 
-    colours.update({
-        "activeBackground": tuple(map(to255, hls_to_rgb(*active_hls))),
-        "inactiveBackground": tuple(map(to255, hls_to_rgb(*inactive_hls)))
-    })
+    for scheme_name, icon_colour in new_schemes:
+        colour_scheme = ConfigParser()
 
-    colour_scheme["WM"] = {k: ",".join(map(str, map(int, v)))
-                           for k, v in colours.items()}
+        for section in base_scheme.sections():
+            colour_scheme[section] = dict(base_scheme.items(section))
 
-    path = os.path.join(xdg_data_home, "color-schemes",
-                        "{}.colors".format(name))
-    with open(path, 'w') as f:
-        colour_scheme.write(f)
+        colour_scheme["General"] = {
+            "Name": scheme_name
+        }
+
+        icon_hls = rgb_to_hls(*map(_to1, icon_colour))
+        active_hls = (
+            icon_hls[0],
+            (icon_hls[1] + base_active_hls[1]) / 2,
+            min(icon_hls[2] * 1.5, 1)
+        )
+        inactive_hls = (
+            icon_hls[0],
+            min(inactive_l_mult * active_hls[1], 1),
+            min(inactive_s_mult * active_hls[2], 1)
+        )
+        wm_colours = base_wm_colours.copy()
+        wm_colours.update({
+            "activeBackground": tuple(map(_to255, hls_to_rgb(*active_hls))),
+            "inactiveBackground": tuple(map(_to255, hls_to_rgb(*inactive_hls)))
+        })
+        colour_scheme["WM"] = {k: ",".join(map(str, map(int, v)))
+                               for k, v in wm_colours.items()}
+
+        path = os.path.join(xdg_data_home, "color-schemes",
+                            "{}.colors".format(scheme_name))
+        with open(path, 'w') as f:
+            colour_scheme.write(f)
 
 
 def update_kwin_rules(updates):
@@ -300,7 +304,7 @@ def update_application_colours(executor):
     remove_colour_schemes()
 
     broken_colour_schemes = {None}
-
+    new_colour_schemes = []
     for future in concurrent.futures.as_completed(colour_scheme_futures):
         colour_scheme, icon_path = colour_scheme_futures[future]
         try:
@@ -309,7 +313,8 @@ def update_application_colours(executor):
             logger.exception("Error processing icon: {}".format(icon_path))
             broken_colour_schemes.add(colour_scheme)
         else:
-            add_colour_scheme(base_colour_scheme, colour_scheme, icon_colours)
+            new_colour_schemes.append((colour_scheme, icon_colours))
+    add_colour_schemes(base_colour_scheme, new_colour_schemes)
 
     kwin_rule_updates = []
     for colour_scheme, wmclasses in wmclass_colour_schemes.items():
