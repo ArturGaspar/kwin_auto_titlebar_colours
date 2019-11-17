@@ -175,8 +175,12 @@ def get_colours_for_icon(icon_path):
                          stdout=subprocess.PIPE)
     stdout, stderr = p.communicate()
     data = json.loads(stdout)
-    return tuple((data[0]["image"]["channelStatistics"][channel]["mean"]
-                  for channel in ("Red", "Green", "Blue")))
+    if isinstance(data, list):
+        data = data[0]
+    image = data["image"]
+    channels = {k.lower(): v for k, v in image["channelStatistics"].items()}
+    return tuple((float(channels[channel]["mean"])
+                  for channel in ("red", "green", "blue")))
 
 
 _to1 = partial(mul, 1 / 255)
