@@ -45,6 +45,8 @@ class ConfigParser(configparser.ConfigParser):
 
 def remove_colour_schemes():
     schemes_dir = os.path.join(xdg_data_home, "color-schemes")
+    if not os.path.isdir(schemes_dir):
+        return
     pattern = get_colour_scheme_name("*")
     for filename in fnmatch.filter(os.listdir(schemes_dir),
                                    "{}.colors".format(pattern)):
@@ -198,6 +200,9 @@ def add_colour_schemes(base_scheme, new_schemes):
     )
     inactive_l_mult = (1 + (base_inactive_hls[1] / base_active_hls[1])) / 2
     inactive_s_mult = (1 + (base_inactive_hls[2] / base_active_hls[2])) / 2
+
+    schemes_dir = os.path.join(xdg_data_home, "color-schemes")
+    os.makedirs(schemes_dir, exist_ok=True)
 
     for scheme_name, icon_colour in new_schemes:
         colour_scheme = ConfigParser()
