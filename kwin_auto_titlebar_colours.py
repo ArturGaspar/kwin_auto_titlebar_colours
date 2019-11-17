@@ -58,7 +58,7 @@ def remove_kwin_rules():
     rules.read(kwin_rules_path)
 
     new_rules = []
-    count = rules["General"].getint("count", fallback=0)
+    count = rules.getint("General", "count", fallback=0)
     for section in map(str, range(1, count + 1)):
         try:
             rule = dict(rules.items(section))
@@ -71,6 +71,11 @@ def remove_kwin_rules():
 
     for section, rule in enumerate(new_rules, start=1):
         rules[str(section)] = rule
+
+    try:
+        rules.add_section("General")
+    except configparser.DuplicateSectionError:
+        pass
 
     rules["General"]["count"] = str(len(new_rules))
 
