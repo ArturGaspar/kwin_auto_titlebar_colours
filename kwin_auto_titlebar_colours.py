@@ -13,6 +13,7 @@ from colorsys import hsv_to_rgb, rgb_to_hsv
 from collections import defaultdict
 from functools import partial
 from itertools import chain
+from operator import mul
 
 from xdg.BaseDirectory import load_data_paths, xdg_config_home, xdg_data_home
 from xdg.DesktopEntry import DesktopEntry
@@ -191,25 +192,30 @@ def add_colour_scheme(base_colour_scheme, name, icon_colour):
     colours = {k: tuple(map(int, v.split(",")))
                for k, v in base_colour_scheme.items("WM")}
 
-    active_hsv = rgb_to_hsv(*colours["activeBackground"])
-    inactive_hsv = rgb_to_hsv(*colours["inactiveBackground"])
-    inactive_s_mult = (1 + (inactive_hsv[1] / active_hsv[1])) / 2
-    inactive_v_mult = (1 + (inactive_hsv[2] / active_hsv[2])) / 2
+    to1 = partial(mul, 1 / 255)
+    to255 = partial(mul, 255)
 
-    icon_hsv = rgb_to_hsv(*icon_colour)
-    icon_hsv = (
+    theme_active_hsv = rgb_to_hsv(*map(to1, colours["activeBackground"]))
+    theme_inactive_hsv = rgb_to_hsv(*map(to1, colours["inactiveBackground"]))
+    inactive_s_mult = (1 + (theme_inactive_hsv[1] / theme_active_hsv[1])) / 2
+    inactive_v_mult = (1 + (theme_inactive_hsv[2] / theme_active_hsv[2])) / 2
+
+    icon_hsv = rgb_to_hsv(*map(to1, icon_colour))
+    active_hsv = (
         icon_hsv[0],
-        (2 * min(1, 2 * icon_hsv[1]) + active_hsv[1]) / 3,
+        (2 * min(1, 2 * icon_hsv[1]) + theme_active_hsv[1]) / 3,
         icon_hsv[2]
     )
-    icon_inactive_hsv = (
+    inactive_hsv = (
         icon_hsv[0],
-        min(inactive_s_mult * icon_hsv[1], 1),
-        min(inactive_v_mult * icon_hsv[2], 255)
+        min(inactive_s_mult * active_hsv[1], 1),
+        min(inactive_v_mult * active_hsv[2], 1)
     )
 
-    colours["activeBackground"] = hsv_to_rgb(*icon_hsv)
-    colours["inactiveBackground"] = hsv_to_rgb(*icon_inactive_hsv)
+    colours.update({
+        "activeBackground": tuple(map(to255, hsv_to_rgb(*active_hsv))),
+        "inactiveBackground": tuple(map(to255, hsv_to_rgb(*inactive_hsv)))
+    })
 
     colour_scheme["WM"] = {k: ",".join(map(str, map(int, v)))
                            for k, v in colours.items()}
