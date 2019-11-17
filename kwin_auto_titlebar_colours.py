@@ -293,7 +293,7 @@ def update_application_colours(executor):
                     icon_name.replace(os.sep, "_").replace(".", "_")
                 )
                 future = executor.submit(get_colours_for_icon, icon_path)
-                colour_scheme_futures[future] = colour_scheme
+                colour_scheme_futures[future] = (colour_scheme, icon_path)
 
         wmclass_colour_schemes[colour_scheme].append(wmclass)
 
@@ -302,11 +302,11 @@ def update_application_colours(executor):
     broken_colour_schemes = {None}
 
     for future in concurrent.futures.as_completed(colour_scheme_futures):
-        colour_scheme = colour_scheme_futures[future]
+        colour_scheme, icon_path = colour_scheme_futures[future]
         try:
             icon_colours = future.result()
         except Exception:
-            logger.exception("Error processing icon {}".format(icon_name))
+            logger.exception("Error processing icon: {}".format(icon_path))
             broken_colour_schemes.add(colour_scheme)
         else:
             add_colour_scheme(base_colour_scheme, colour_scheme, icon_colours)
