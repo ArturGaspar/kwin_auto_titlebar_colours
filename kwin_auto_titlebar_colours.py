@@ -9,7 +9,7 @@ import logging
 import os
 import shlex
 import subprocess
-from colorsys import hsv_to_rgb, rgb_to_hsv
+from colorsys import hls_to_rgb, rgb_to_hls
 from collections import defaultdict
 from functools import partial
 from itertools import chain
@@ -195,26 +195,26 @@ def add_colour_scheme(base_colour_scheme, name, icon_colour):
     to1 = partial(mul, 1 / 255)
     to255 = partial(mul, 255)
 
-    theme_active_hsv = rgb_to_hsv(*map(to1, colours["activeBackground"]))
-    theme_inactive_hsv = rgb_to_hsv(*map(to1, colours["inactiveBackground"]))
-    inactive_s_mult = (1 + (theme_inactive_hsv[1] / theme_active_hsv[1])) / 2
-    inactive_v_mult = (1 + (theme_inactive_hsv[2] / theme_active_hsv[2])) / 2
+    theme_active_hls = rgb_to_hls(*map(to1, colours["activeBackground"]))
+    theme_inactive_hls = rgb_to_hls(*map(to1, colours["inactiveBackground"]))
+    inactive_l_mult = (1 + (theme_inactive_hls[1] / theme_active_hls[1])) / 2
+    inactive_s_mult = (1 + (theme_inactive_hls[2] / theme_active_hls[2])) / 2
 
-    icon_hsv = rgb_to_hsv(*map(to1, icon_colour))
-    active_hsv = (
-        icon_hsv[0],
-        (2 * min(1, 2 * icon_hsv[1]) + theme_active_hsv[1]) / 3,
-        icon_hsv[2]
+    icon_hls = rgb_to_hls(*map(to1, icon_colour))
+    active_hls = (
+        icon_hls[0],
+        (icon_hls[1] + theme_active_hls[1]) / 2,
+        min(icon_hls[2] * 1.5, 1)
     )
-    inactive_hsv = (
-        icon_hsv[0],
-        min(inactive_s_mult * active_hsv[1], 1),
-        min(inactive_v_mult * active_hsv[2], 1)
+    inactive_hls = (
+        icon_hls[0],
+        min(inactive_l_mult * active_hls[1], 1),
+        min(inactive_s_mult * active_hls[2], 1)
     )
 
     colours.update({
-        "activeBackground": tuple(map(to255, hsv_to_rgb(*active_hsv))),
-        "inactiveBackground": tuple(map(to255, hsv_to_rgb(*inactive_hsv)))
+        "activeBackground": tuple(map(to255, hls_to_rgb(*active_hls))),
+        "inactiveBackground": tuple(map(to255, hls_to_rgb(*inactive_hls)))
     })
 
     colour_scheme["WM"] = {k: ",".join(map(str, map(int, v)))
