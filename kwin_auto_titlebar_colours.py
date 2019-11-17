@@ -181,7 +181,7 @@ def get_colours_for_icon(icon_path):
         data = data[0]
     image = data["image"]
     channels = {k.lower(): v for k, v in image["channelStatistics"].items()}
-    return tuple((float(channels[channel]["mean"])
+    return tuple((float(channels.get(channel, channels.get("gray"))["mean"])
                   for channel in ("red", "green", "blue")))
 
 
