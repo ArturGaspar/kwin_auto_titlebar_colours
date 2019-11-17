@@ -85,7 +85,7 @@ def remove_kwin_rules():
 
 def load_base_colour_scheme():
     kdeglobals = ConfigParser()
-    kdeglobals.read(os.path.join(xdg_config_home, "kdeglobals"))
+    kdeglobals.read(load_first_config("kdeglobals"))
     base_colour_scheme = kdeglobals["General"]["ColorScheme"]
 
     for color_schemes_dir in load_data_paths("color-schemes"):
@@ -248,7 +248,7 @@ def update_kwin_rules(updates):
     rules = ConfigParser()
     rules.read(kwin_rules_path)
 
-    count = rules["General"].getint("count", fallback=0)
+    count = rules.getint("General", "count", fallback=0)
     known_rules = {}
     for i in range(1, count + 1):
         known_rules[rules.get(str(i), "Description", fallback=None)] = i
@@ -282,6 +282,11 @@ def update_kwin_rules(updates):
             rule["decocolorrule"] = "1"
 
         rules[str(rule_index)] = dict(rule)
+
+    try:
+        rules.add_section("General")
+    except configparser.DuplicateSectionError:
+        pass
 
     rules["General"]["count"] = str(count)
 
